@@ -1,6 +1,8 @@
 #include "websocket.h"
 #include "b64.h"
 #include "sha1.h"
+
+// Private function, ignore this
 uint8_t _ws_handshake (struct websocket *w) {
     const char *buffer = "GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: %s\r\nOrigin: %s\r\nSec-WebSocket-Version: 13\r\n\r\n";
     
@@ -38,6 +40,18 @@ uint8_t _ws_handshake (struct websocket *w) {
     return 0x03; // ??????
 }
 
+/*
+    Function:   WS
+    Returns:    websocket connection object, NULL on error
+    Parameters:
+                parameter       description                 example
+                char *ip        IP address for the socket   127.0.0.1
+                u16 port        Port of the server          8080
+                char *url       URL in the GET field        ws://127.0.0.1:8080/
+                char *origin    Origin, default if NULL     localhost
+                char *host      Host, default if NULL       localhost
+
+*/
 struct websocket *WS (char *ip, uint16_t port, char *url, char *origin, char *host) {
     
     int sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -69,10 +83,16 @@ struct websocket *WS (char *ip, uint16_t port, char *url, char *origin, char *ho
         return NULL;
     }
     ws->state = 0x01;
-    ws->rx_buffer = malloc(128);
-    ws->tx_buffer = malloc(128);
+    ws->rx_buffer = malloc(4096);
+    ws->tx_buffer = malloc(4096);
 }
-
+/*
+    Function:   WS_close
+    Returns:    0 if WebSocket was closed, 1 if websocket object is null
+    Parameters:
+                parameter               description
+                struct websocket *w     websocket object
+*/
 uint8_t WS_close (struct websocket *w) {
     if(w == NULL) 
         return 0x01;
@@ -86,7 +106,14 @@ uint8_t WS_close (struct websocket *w) {
     free(w);
     return 0;
 }
-
+/*
+    Function:   WS_receive
+    Returns:    Message length on success, < 0 on fail
+    Parameters:
+                parameter               description
+                struct websocket *w     websocket object
+                char *o_buffer          Allocated memory for output message.
+*/
 int WS_receive (struct websocket *w, char *o_buffer) {
     if(w->state != 0x01) {
         printf("Websocket state not ready!\n");
@@ -94,7 +121,7 @@ int WS_receive (struct websocket *w, char *o_buffer) {
     } 
     int rcvd = 0;
     while(1) {
-        if((rcvd = recv(w->socket, w->rx_buffer, 128, 0)) < 0) {
+        if((rcvd = recv(w->socket, w->rx_buffer, 4096, 0)) < 0) {
             return -1; // receive failed
         }
         if(rcvd < 1) // prevent blank messages
@@ -104,15 +131,37 @@ int WS_receive (struct websocket *w, char *o_buffer) {
     }
     
     uint8_t len = w->rx_buffer[1];
-    len |= 0UL << 7;
-    for(int x = 0; x < len; x++) {
-        o_buffer[x] = w->rx_buffer[x + 2];
-    }
-    o_buffer[len + 2] = 0; 
-    return len;
-}
 
-int WS_send (struct websocket *w, char *data, uint8_t length, WS_FRAME_TYPE datatype) {
+    printf("%i %i %i %i\n", (uint8_t)w->rx_buffer[0], (uint8_t)w->rx_buffer[1],(uint8_t)w->rx_buffer[2], (uint8_t)w->rx_buffer[3]);
+    len |= 0UL << 7;
+    int x_offset = 2;
+    uint16_t long_length = 0;
+    if(len >= 126) {
+        long_length = (uint8_t)w->rx_buffer[2] << 8 | (uint8_t)w->rx_buffer[3];
+        x_offset = 4;
+        printf("Receiving long message %i\n", long_length);
+    }
+    else {
+        long_length = len;
+    }
+
+    for(int x = 0; x < long_length; x++) {
+        o_buffer[x] = w->rx_buffer[x + x_offset];
+    }
+    o_buffer[long_length + x_offset] = 0; 
+    return long_length;
+}
+/*
+    Function:   WS_send
+    Returns:    Sends character data
+    Parameters:
+                parameter               description
+                struct websocket *w     websocket object
+                char *data              input data
+                u16 length              message length, use strlen(data)
+                WS_FRAME_TYPE           datatype
+*/
+int WS_send (struct websocket *w, char *data, uint16_t length, WS_FRAME_TYPE datatype) {
     if(w->state != 0x01) {
         printf("Websocket state not ready!\n");
         return -2;
@@ -129,24 +178,31 @@ int WS_send (struct websocket *w, char *data, uint8_t length, WS_FRAME_TYPE data
     frame_b_0 |= (datatype >> 0 & 1) << 0;
 
     uint8_t frame_b_1 = 0;
-    uint8_t data_len = strlen(data);
-    frame_b_1 = data_len;
+    uint16_t data_len = length;
+    uint16_t frame_b_2 = 0;
+    int x_offset = 2; // default 2, > 126B = 4
+    if(data_len < 126) {
+        frame_b_1 = data_len; // set 7-bit length
+    }
+    else {
+        frame_b_1 = 126; // set 7-bit length to max - 1, continue to next size frame
+        frame_b_2 = length;
+        x_offset = 4;
+        printf("Long message!\n");
+    }
     frame_b_1 |= 0UL << 7; // MASK bit to 0
-    /*
-    frame_b_1 |= (data_len >> 6 & 1) << 6; // set 7-bit length
-    frame_b_1 |= (data_len >> 5 & 1) << 5;
-    frame_b_1 |= (data_len >> 4 & 1) << 4;
-    frame_b_1 |= (data_len >> 3 & 1) << 3;
-    frame_b_1 |= (data_len >> 2 & 1) << 2;
-    frame_b_1 |= (data_len >> 1 & 1) << 1;
-    frame_b_1 |= (data_len >> 0 & 1) << 0;
-    */
+
     for(int x = 0; x < length; x++) {
-        w->tx_buffer[x + 2] = data[x];
+        w->tx_buffer[x + x_offset] = data[x];
     }
     w->tx_buffer[0] = frame_b_0;
     w->tx_buffer[1] = frame_b_1;
+    if(data_len >= 126) {
+        w->tx_buffer[2] = frame_b_2 >> 8;
+        w->tx_buffer[3] = frame_b_2 >> 0;
+    }
+    
 
-    write(w->socket, w->tx_buffer, length + 2);
+    write(w->socket, w->tx_buffer, length + x_offset);
     return 0;
 }

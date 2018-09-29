@@ -2,10 +2,9 @@
 
 ## Description
 * Small WebSocket client written in C
-* Supports 125B messages
+* Supports 65KB messages
 
 ## TODO
-* Larger messages
 * Error checking
 * Datatypes
 * pthreads and "on" callbacks

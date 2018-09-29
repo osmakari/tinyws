@@ -1,16 +1,20 @@
 #include "../src/websocket.h"
 
 int main () {
+    // create websocket object
     struct websocket *ws = WS("127.0.0.1", 8080, "ws://localhost:8080/", NULL, NULL);
     if(ws == NULL) {
         printf("Failed to connect to the websocket server!\n");
         return 1;
     }
-    char *d = "This is a demo!!!\n";
+    // Send important data
+    char *d = "123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890";
     WS_send(ws, d, strlen(d), TEXT);
-    char buffer[128] = { 0 };
+    // Allocate Buffer
+    char buffer[4096] = { 0 };
     int len = 0;
     while (1) {
+        // Receive data
         if((len = WS_receive(ws, buffer)) > 0) {
             printf("Data from server: %s\n", buffer);
         }

@@ -24,6 +24,6 @@ struct websocket {
 struct websocket *WS (char *ip, uint16_t port, char *url, char *origin, char *host);
 uint8_t WS_close (struct websocket *w);
 int WS_receive (struct websocket *w, char *o_buffer);
-int WS_send (struct websocket *w, char *data, uint8_t length, WS_FRAME_TYPE datatype);
+int WS_send (struct websocket *w, char *data, uint16_t length, WS_FRAME_TYPE datatype);
 
 #endif
