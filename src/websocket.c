@@ -2,6 +2,25 @@
 #include "b64.h"
 #include "sha1.h"
 
+#ifdef USE_PTHREADS
+void *_ws_runner (void *wx) {
+    struct websocket *w = (struct websocket*)wx;
+    char rec[MAX_MESSAGE_LENGTH] = { 0 };
+    int mesl = 0;
+    while(w != NULL && w->state == 0x01) {
+        
+        if((mesl = WS_receive(w, rec)) < 0) {
+            WS_close(w);
+            break;
+        }
+        if(w->onmessage != NULL) {
+            w->onmessage(rec, mesl);
+        }
+    }
+    printf("Runner stopped\n");
+}
+#endif
+
 // Private function, ignore this
 uint8_t _ws_handshake (struct websocket *w) {
     const char *buffer = "GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: %s\r\nOrigin: %s\r\nSec-WebSocket-Version: 13\r\n\r\n";
@@ -76,15 +95,27 @@ struct websocket *WS (char *ip, uint16_t port, char *url, char *origin, char *ho
     ws->url = (url == NULL ? "/" : url);
     ws->host = (host == NULL ? "localhost" : host);
     ws->origin = (origin == NULL ? "localhost" : origin);
+    
     uint8_t ws_err;
+    
     if((ws_err = _ws_handshake(ws)) != 0) {
         WS_close(ws);
         printf("WebSocket Handshake failed with error %i\n", ws_err);
         return NULL;
     }
     ws->state = 0x01;
-    ws->rx_buffer = malloc(4096);
-    ws->tx_buffer = malloc(4096);
+    ws->rx_buffer = malloc(MAX_MESSAGE_LENGTH);
+    ws->tx_buffer = malloc(MAX_MESSAGE_LENGTH);
+
+    #ifdef USE_PTHREADS
+    ws->onopen = NULL;
+    ws->onmessage = NULL;
+    if(pthread_create(&ws->handle, NULL, _ws_runner, ws) < 0) {
+        WS_close(ws);
+        return NULL;
+    }
+    #endif
+    return ws;
 }
 /*
     Function:   WS_close
@@ -121,7 +152,7 @@ int WS_receive (struct websocket *w, char *o_buffer) {
     } 
     int rcvd = 0;
     while(1) {
-        if((rcvd = recv(w->socket, w->rx_buffer, 4096, 0)) < 0) {
+        if((rcvd = recv(w->socket, w->rx_buffer, MAX_MESSAGE_LENGTH, 0)) < 0) {
             return -1; // receive failed
         }
         if(rcvd < 1) // prevent blank messages
@@ -132,14 +163,12 @@ int WS_receive (struct websocket *w, char *o_buffer) {
     
     uint8_t len = w->rx_buffer[1];
 
-    printf("%i %i %i %i\n", (uint8_t)w->rx_buffer[0], (uint8_t)w->rx_buffer[1],(uint8_t)w->rx_buffer[2], (uint8_t)w->rx_buffer[3]);
     len |= 0UL << 7;
     int x_offset = 2;
     uint16_t long_length = 0;
     if(len >= 126) {
         long_length = (uint8_t)w->rx_buffer[2] << 8 | (uint8_t)w->rx_buffer[3];
         x_offset = 4;
-        printf("Receiving long message %i\n", long_length);
     }
     else {
         long_length = len;
@@ -188,7 +217,6 @@ int WS_send (struct websocket *w, char *data, uint16_t length, WS_FRAME_TYPE dat
         frame_b_1 = 126; // set 7-bit length to max - 1, continue to next size frame
         frame_b_2 = length;
         x_offset = 4;
-        printf("Long message!\n");
     }
     frame_b_1 |= 0UL << 7; // MASK bit to 0
 

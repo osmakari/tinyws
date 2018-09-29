@@ -1,5 +1,28 @@
 #include "../src/websocket.h"
 
+#ifdef USE_PTHREADS
+
+void onmessage (char *c, uint16_t length) {
+    printf("Length: %i, Message: %s\n", length, c);
+}
+
+int main () {
+    struct websocket *ws = WS("127.0.0.1", 8080, "ws://localhost:8080/", NULL, NULL);
+    if(ws == NULL) {
+        printf("Failed to connect to the websocket server!\n");
+        return 1;
+    }
+    ws->onmessage = onmessage;
+    while(1) {
+        sleep(5);
+        char *c = "Data: abcassdgkawgkqwghwp89ghqw498ghw30498ghw094jgw948ghw9g8hw94gh8we98hwerhg8wergwgj893q489gh3w49ghwe9r8ghwe89rg";
+        WS_send(ws, c, strlen(c), TEXT);
+    }
+
+    return 0;
+}
+
+#elif
 int main () {
     // create websocket object
     struct websocket *ws = WS("127.0.0.1", 8080, "ws://localhost:8080/", NULL, NULL);
@@ -25,3 +48,4 @@ int main () {
     }
     return 0;
 }
+#endif
