@@ -10,16 +10,29 @@ void *_ws_runner (void *wx) {
     while(w != NULL && w->state == 0x01) {
         
         if((mesl = WS_receive(w, rec)) < 0) {
+            printf("Recv fail!\n");
             WS_close(w);
+            
             break;
         }
         if(w->onmessage != NULL) {
+            rec[mesl] = 0;
             w->onmessage(rec, mesl);
         }
+        memset(rec, 0, MAX_MESSAGE_LENGTH);
     }
     printf("Runner stopped\n");
 }
 #endif
+
+void set_bit (uint8_t *a, uint8_t index, uint8_t state) {
+    if(state == 0) {
+        *a &= ~(1UL << index);
+    }
+    else {
+        *a |= 1UL << index;
+    }
+}
 
 // Private function, ignore this
 uint8_t _ws_handshake (struct websocket *w) {
@@ -44,7 +57,7 @@ uint8_t _ws_handshake (struct websocket *w) {
     int rcvd = 0;
     while(1) {
         
-        if((rcvd = recv(w->socket, sm, 1024, 0)) < 0) {
+        if((rcvd = read(w->socket, sm, 1024)) < 0) {
             return 0x01; // receive failed
         }
         if(rcvd < 1)
@@ -125,14 +138,19 @@ struct websocket *WS (char *ip, uint16_t port, char *url, char *origin, char *ho
                 struct websocket *w     websocket object
 */
 uint8_t WS_close (struct websocket *w) {
+    printf("Closing WebSocket..\n");
     if(w == NULL) 
         return 0x01;
-    
+    #ifdef USE_PTHREADS
+    pthread_detach(w->handle);
+    #endif    
     close(w->socket);
     if(w->rx_buffer != NULL)
         free(w->rx_buffer);
     if(w->tx_buffer != NULL)
         free(w->tx_buffer);
+
+
 
     free(w);
     return 0;
@@ -149,10 +167,14 @@ int WS_receive (struct websocket *w, char *o_buffer) {
     if(w->state != 0x01) {
         printf("Websocket state not ready!\n");
         return -2;
-    } 
+    }
     int rcvd = 0;
+    uint8_t opcode;
+    uint8_t len;
+    cont: // Jump here if received a control frame
+    
     while(1) {
-        if((rcvd = recv(w->socket, w->rx_buffer, MAX_MESSAGE_LENGTH, 0)) < 0) {
+        if((rcvd = read(w->socket, w->rx_buffer, MAX_MESSAGE_LENGTH)) < 0) {
             return -1; // receive failed
         }
         if(rcvd < 1) // prevent blank messages
@@ -160,11 +182,24 @@ int WS_receive (struct websocket *w, char *o_buffer) {
 
         break;   
     }
-    
-    uint8_t len = w->rx_buffer[1];
+    opcode = w->rx_buffer[0]; // last 4 bits of first byte is the opcode
+    set_bit(&opcode, 7, 0);
+    set_bit(&opcode, 6, 0);
+    set_bit(&opcode, 5, 0);
+    set_bit(&opcode, 4, 0);
+    len = w->rx_buffer[1];
 
-    len |= 0UL << 7;
+    set_bit(&len, 7, 0);
+    
+
+    if(opcode == 0x09) { // PING message, return with PONG
+        
+        WS_send(w, w->rx_buffer + 2, len, PONG);
+        
+        goto cont;
+    }
     int x_offset = 2;
+    
     uint16_t long_length = 0;
     if(len >= 126) {
         long_length = (uint8_t)w->rx_buffer[2] << 8 | (uint8_t)w->rx_buffer[3];
@@ -197,15 +232,14 @@ int WS_send (struct websocket *w, char *data, uint16_t length, WS_FRAME_TYPE dat
     }
 
     uint8_t frame_b_0 = 0;
-    frame_b_0 |= 1UL << 7; // FIN bit to 1
-    frame_b_0 |= 0UL << 6; // next 3 RSV bits to 0
-    frame_b_0 |= 0UL << 5;
-    frame_b_0 |= 0UL << 4;
-    frame_b_0 |= (datatype >> 3 & 1) << 3; // Set 4 bit OP CODE
-    frame_b_0 |= (datatype >> 2 & 1) << 2;
-    frame_b_0 |= (datatype >> 1 & 1) << 1;
-    frame_b_0 |= (datatype >> 0 & 1) << 0;
-
+    set_bit(&frame_b_0, 7, 1); // FIN bit to 1
+    set_bit(&frame_b_0, 6, 0); // next 3 RSV bits to 0
+    set_bit(&frame_b_0, 5, 0);
+    set_bit(&frame_b_0, 4, 0);
+    set_bit(&frame_b_0, 3, (datatype >> 3 & 1)); // Set 4 bit OP CODE
+    set_bit(&frame_b_0, 2, (datatype >> 2 & 1));
+    set_bit(&frame_b_0, 1, (datatype >> 1 & 1));
+    set_bit(&frame_b_0, 0, (datatype >> 0 & 1));
     uint8_t frame_b_1 = 0;
     uint16_t data_len = length;
     uint16_t frame_b_2 = 0;
@@ -218,7 +252,7 @@ int WS_send (struct websocket *w, char *data, uint16_t length, WS_FRAME_TYPE dat
         frame_b_2 = length;
         x_offset = 4;
     }
-    frame_b_1 |= 0UL << 7; // MASK bit to 0
+    set_bit(&frame_b_1, 7, 0); // MASK bit to 0
 
     for(int x = 0; x < length; x++) {
         w->tx_buffer[x + x_offset] = data[x];
@@ -230,7 +264,6 @@ int WS_send (struct websocket *w, char *data, uint16_t length, WS_FRAME_TYPE dat
         w->tx_buffer[3] = frame_b_2 >> 0;
     }
     
-
     write(w->socket, w->tx_buffer, length + x_offset);
     return 0;
 }

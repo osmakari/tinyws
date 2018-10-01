@@ -1,7 +1,7 @@
 #ifndef WEBSOCKET_H
 #define WEBSOCKET_H
 
-#define USE_PTHREADS
+#undef USE_PTHREADS
 
 #define MAX_MESSAGE_LENGTH 4096
 

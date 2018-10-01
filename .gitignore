@@ -1,2 +1,5 @@
 # Ignore binaries
 test/bin/*
+# Ignore node_modules for demo
+node_modules
+package-lock.json
