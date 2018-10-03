@@ -29,8 +29,8 @@ struct websocket {
     char *host;
     #ifdef USE_PTHREADS
     pthread_t handle;
-    void (*onopen)(uint8_t ret);
     void (*onmessage)(char *data, uint16_t length);
+    void (*onclose)(char *reason);
     #endif
 };
 

@@ -9,7 +9,7 @@ void onmessage (char *c, uint16_t length) {
 }
 
 int main () {
-    ws = WS("127.0.0.1", 8080, "ws://localhost:8080/", NULL, NULL);
+    ws = WS("127.0.0.1", 8971, NULL, NULL, NULL);
     if(ws == NULL) {
         printf("Failed to connect to the websocket server!\n");
         return 1;
@@ -27,7 +27,7 @@ int main () {
 #else
 int main () {
     // create websocket object
-    struct websocket *ws = WS("127.0.0.1", 8080, "ws://localhost:8080/", NULL, NULL);
+    struct websocket *ws = WS("127.0.0.1", 8971, NULL, NULL, NULL);
     if(ws == NULL) {
         printf("Failed to connect to the websocket server!\n");
         return 1;

@@ -119,9 +119,9 @@ struct websocket *WS (char *ip, uint16_t port, char *url, char *origin, char *ho
     ws->state = 0x01;
     ws->rx_buffer = malloc(MAX_MESSAGE_LENGTH);
     ws->tx_buffer = malloc(MAX_MESSAGE_LENGTH);
-
+    ws->last_ping = time(NULL);
     #ifdef USE_PTHREADS
-    ws->onopen = NULL;
+    ws->onclose = NULL;
     ws->onmessage = NULL;
     if(pthread_create(&ws->handle, NULL, _ws_runner, ws) < 0) {
         WS_close(ws);
@@ -155,6 +155,7 @@ uint8_t WS_close (struct websocket *w) {
     free(w);
     return 0;
 }
+
 /*
     Function:   WS_receive
     Returns:    Message length on success, < 0 on fail
@@ -198,6 +199,20 @@ int WS_receive (struct websocket *w, char *o_buffer) {
         
         goto cont;
     }
+    else if(opcode == 0x08) { // CLOSE
+        for(int x = 0; x < len; x++) {
+            o_buffer[x] = w->rx_buffer[x + 2];
+        }
+        o_buffer[len] = 0;
+        #ifdef USE_PTHREADS
+        if(w->onclose != NULL) {
+            w->onclose(o_buffer);
+        }
+        #endif
+        WS_close(w);
+        printf("Server sent a close request\n");
+        return -1;
+    }
     int x_offset = 2;
     
     uint16_t long_length = 0;
@@ -212,7 +227,9 @@ int WS_receive (struct websocket *w, char *o_buffer) {
     for(int x = 0; x < long_length; x++) {
         o_buffer[x] = w->rx_buffer[x + x_offset];
     }
-    o_buffer[long_length + x_offset] = 0; 
+    if(opcode == 0x01) { // TEXT
+        o_buffer[long_length + x_offset] = 0; 
+    }
     return long_length;
 }
 /*

@@ -4,7 +4,7 @@ var http = require('http');
 var server = http.createServer(function(request, response) {
 
 });
-server.listen(8080, function() { });
+server.listen(8971, function() { });
 
 // create the server
 wsServer = new WebSocketServer({
