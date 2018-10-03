@@ -119,7 +119,6 @@ struct websocket *WS (char *ip, uint16_t port, char *url, char *origin, char *ho
     ws->state = 0x01;
     ws->rx_buffer = malloc(MAX_MESSAGE_LENGTH);
     ws->tx_buffer = malloc(MAX_MESSAGE_LENGTH);
-    ws->last_ping = time(NULL);
     #ifdef USE_PTHREADS
     ws->onclose = NULL;
     ws->onmessage = NULL;
