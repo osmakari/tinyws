@@ -12,16 +12,26 @@
 #include <time.h>
 #include <pthread.h>
 
-struct _ws_cli {
+struct websocket_server;
+
+struct ws_client {
     int socket;
     uint8_t auth;
+    struct websocket_server *connection;
+    struct sockaddr_in addr;
+    int _client_index;
 };
 
 
 struct websocket_server {
-    struct _ws_cli *clients[MAX_CLIENTS];
-    char *rx_buffer;
-    char *tx_buffer;
+    struct ws_client *clients[MAX_CLIENTS];
+    uint16_t port;
+    struct sockaddr_in addr;
+    int sockfd;
+    char *rx;
 };
+
+struct websocket_server *WS_server (uint16_t port);
+int WS_server_update (struct websocket_server *ws);
 
 #endif
