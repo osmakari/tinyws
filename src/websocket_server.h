@@ -3,6 +3,7 @@
 
 #define MAX_CLIENTS 32
 #define SERVER_GUID "a7726808-6b4f-4bbe-b4e2-2a59170032b0"
+#define RECEIVE_BUFFER_LENGTH 2048
 
 #include <stdio.h>
 #include <string.h>
@@ -29,6 +30,8 @@ struct websocket_server {
     struct sockaddr_in addr;
     int sockfd;
     char *rx;
+    void (*onmessage)(struct ws_client *from, char *data, uint16_t length);
+    void (*onopen)(struct ws_client *client);
 };
 
 struct websocket_server *WS_server (uint16_t port);

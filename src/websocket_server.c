@@ -1,5 +1,6 @@
 #include "websocket_server.h"
 #include <poll.h>
+#include <strings.h>
 
 struct ws_client *_ws_server_accept (struct websocket_server *ws);
 
@@ -9,8 +10,16 @@ int WS_server_update (struct websocket_server *ws) {
     for(x = 0; x < MAX_CLIENTS; x++) {
         if(ws->clients[x] == NULL)
             continue;
-        int read 
-        while()
+        int read_length = 0;
+        bzero(ws->rx, RECEIVE_BUFFER_LENGTH);
+        while((read_length = recv(ws->clients[x]->socket, ws->rx, RECEIVE_BUFFER_LENGTH, NULL)) > 0) {
+
+        }
+        if(read_length < 0) {
+            // dc
+            free(ws->clients[x]);
+            ws->clients[x] = NULL;
+        }
     }
 }
 
@@ -52,10 +61,14 @@ struct websocket_server *WS_server (uint16_t port) {
         printf("Failed to open socket!\n");
         return NULL;
     }
+    int enable = 1;
+    setsockopt(ws->sockfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
     ws->addr.sin_family = AF_INET;
     ws->addr.sin_addr.s_addr = INADDR_ANY;
     ws->addr.sin_port = port;
-    ws->rx = (char*)malloc(2048);
+    ws->onmessage = NULL;
+    ws->onopen = NULL;
+    ws->rx = (char*)malloc(RECEIVE_BUFFER_LENGTH);
     int x;
     for(x = 0; x < MAX_CLIENTS; x++) {
         ws->clients[x] = NULL;
